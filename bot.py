@@ -2,8 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 import os
 
-BOT_TOKEN = os.environ["8156145088:AAFPCh1S5aZDdByyEViD8n6U26MXNkksz4s"]
-CHAT_ID = os.environ["999639255"]
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
 
 SITE_URL = "https://www.talkchelsea.net/"
 LAST_FILE = "last_link.txt"
