@@ -26,8 +26,19 @@ def save_last(link):
 def get_latest_post():
     r = requests.get(NEWS_LIST, headers=HEADERS, timeout=20)
     soup = BeautifulSoup(r.text, "html.parser")
+
     a = soup.select_one(".newsline-tab-item-title a")
-    return a.text.strip(), SITE_URL + a["href"]
+
+    title = a.text.strip()
+    link = a["href"]
+
+    # agar link to‘liq bo‘lsa — o‘zgartirmaymiz
+    if link.startswith("http"):
+        return title, link
+
+    # aks holda saytni qo‘shamiz
+    return title, SITE_URL + link
+
 
 def get_post_data(url):
     r = requests.get(url, headers=HEADERS, timeout=20)
