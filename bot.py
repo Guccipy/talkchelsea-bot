@@ -2,63 +2,62 @@ import requests
 from bs4 import BeautifulSoup
 import os
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
-SITE_URL = "https://www.talkchelsea.net/"
-LAST_FILE = "last_link.txt"
-
+BASE_URL = "https://chelseablues.ru"
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
-
-def get_last_link():
-    if os.path.exists(LAST_FILE):
-        return open(LAST_FILE).read().strip()
-    return ""
-
-
-def save_last_link(link):
-    open(LAST_FILE, "w").write(link)
-
-
-def send_message(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": text,
-        "disable_web_page_preview": False
-    })
-
-
 def get_latest_post():
-    r = requests.get(SITE_URL, headers=HEADERS, timeout=20)
+    r = requests.get(BASE_URL, headers=HEADERS, timeout=20)
     soup = BeautifulSoup(r.text, "html.parser")
 
-    article = soup.find("article", class_="cs-entry__featured")
-    if not article:
-        return None, None
+    container = soup.find("div", id="allEntries")
+    first_news = container.find("div", class_="news-item")
 
-    title = article.find("h2").get_text(strip=True)
-    link = article.find("a", class_="cs-overlay-link")["href"]
+    link = first_news.find("a")["href"]
+    return BASE_URL + link
 
-    return title, link
+def get_post_data(url):
+    r = requests.get(url, headers=HEADERS, timeout=20)
+    soup = BeautifulSoup(r.text, "html.parser")
 
+    # Title
+    title = soup.find("h1").get_text(strip=True)
 
-title, link = get_latest_post()
+    # Image
+    img = soup.find("meta", property="og:image")
+    image_url = img["content"] if img else None
 
-if not link:
-    print("❌ Post topilmadi")
-    exit()
+    # Content
+    content_block = soup.find("div", class_="news-text") \
+                 or soup.find("div", class_="entry-content")
 
-last = get_last_link()
-if link == last:
-    print("⏭ Oldin yuborilgan")
-    exit()
+    paragraphs = content_block.find_all("p")
+    text = "\n\n".join(p.get_text(strip=True) for p in paragraphs)
 
-msg = f"📰 NEW POST (EN)\n\n{title}\n\n{link}"
-send_message(msg)
-save_last_link(link)
+    return title, text, image_url
 
-print("✅ Yangi post yuborildi")
+def send_to_telegram(title, text, image_url, link):
+    caption = f"<b>{title}</b>\n\n{text}\n\n<a href='{link}'>Manba</a>"
+
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+    payload = {
+        "chat_id": CHAT_ID,
+        "photo": image_url,
+        "caption": caption[:1024],
+        "parse_mode": "HTML"
+    }
+
+    requests.post(url, data=payload)
+
+def main():
+    link = get_latest_post()
+    title, text, image_url = get_post_data(link)
+    send_to_telegram(title, text, image_url, link)
+
+if __name__ == "__main__":
+    main()
+
