@@ -1,74 +1,97 @@
 import requests
-from bs4 import BeautifulSoup
 import os
+from bs4 import BeautifulSoup
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+CHAT_ID = os.environ["CHAT_ID"]
 
 BASE_URL = "https://chelseablues.ru"
+LAST_FILE = "last_link.txt"
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
-def get_latest_post():
-    r = requests.get(BASE_URL, headers=HEADERS, timeout=20)
+
+def get_last_link():
+    if os.path.exists(LAST_FILE):
+        return open(LAST_FILE).read().strip()
+    return ""
+
+
+def save_last_link(link):
+    open(LAST_FILE, "w").write(link)
+
+
+def get_latest_post_link():
+    r = requests.get(BASE_URL, headers=HEADERS, timeout=15)
     soup = BeautifulSoup(r.text, "html.parser")
 
-    container = soup.find("div", id="allEntries")
-    first_news = container.find("div", class_="news-item")
+    first_post = soup.select_one(".news-item-title a")
+    if not first_post:
+        return None
 
-    link = first_news.find("a")["href"]
-    return BASE_URL + link
+    return BASE_URL + first_post["href"]
+
 
 def get_post_data(url):
-    r = requests.get(url, headers=HEADERS, timeout=20)
+    r = requests.get(url, headers=HEADERS, timeout=15)
     soup = BeautifulSoup(r.text, "html.parser")
 
-    # TITLE
-    h1 = soup.find("h1")
-    title = h1.get_text(strip=True) if h1 else "No title"
+    title = soup.select_one("h1").get_text(strip=True)
 
-    # IMAGE
-    img = soup.find("meta", property="og:image")
-    image_url = img["content"] if img else None
+    image = soup.select_one(".news-view-hero img")
+    image_url = BASE_URL + image["src"] if image else None
 
-    # CONTENT (bir nechta variant)
-    content_block = (
-        soup.find("div", class_="news-text")
-        or soup.find("div", class_="news-item-message")
-        or soup.find("div", class_="entry-content")
-    )
+    content_block = soup.select_one(".news-text")
+    paragraphs = content_block.find_all("p")
 
-    if not content_block:
-        text = "Full article available on the website."
-    else:
-        paragraphs = content_block.find_all("p")
-        if paragraphs:
-            text = "\n\n".join(p.get_text(strip=True) for p in paragraphs)
-        else:
-            text = content_block.get_text(strip=True)
+    full_text = "\n\n".join(p.get_text(strip=True) for p in paragraphs)
 
-    return title, text[:900], image_url
+    return title, full_text, image_url
 
 
-def send_to_telegram(title, text, image_url, link):
-    caption = f"<b>{title}</b>\n\n{text}\n\n<a href='{link}'>Manba</a>"
-
+def send_photo(caption, photo):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-    payload = {
+    requests.post(url, data={
         "chat_id": CHAT_ID,
-        "photo": image_url,
-        "caption": caption[:1024],
-        "parse_mode": "HTML"
-    }
+        "photo": photo,
+        "caption": caption[:1024]
+    })
 
-    requests.post(url, data=payload)
+
+def send_message(text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    requests.post(url, data={
+        "chat_id": CHAT_ID,
+        "text": text[:4096]
+    })
+
 
 def main():
-    link = get_latest_post()
-    title, text, image_url = get_post_data(link)
-    send_to_telegram(title, text, image_url, link)
+    post_link = get_latest_post_link()
+    if not post_link:
+        print("❌ Post topilmadi")
+        return
+
+    if post_link == get_last_link():
+        print("⏭ Yangi post yo‘q")
+        return
+
+    title, text, image = get_post_data(post_link)
+
+    caption = f"📰 {title}\n\n{text}\n\n🔗 {post_link}"
+
+    if image:
+        send_photo(caption, image)
+    else:
+        send_message(caption)
+
+    save_last_link(post_link)
+    print("✅ Yangi post yuborildi")
+
 
 if __name__ == "__main__":
     main()
+
 
