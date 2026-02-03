@@ -35,20 +35,29 @@ def get_latest_post_link():
 
 
 def get_post_data(url):
-    r = requests.get(url, headers=HEADERS, timeout=15)
+    r = requests.get(url, timeout=20)
     soup = BeautifulSoup(r.text, "html.parser")
 
-    title = soup.select_one("h1").get_text(strip=True)
+    # 📰 Sarlavha
+    title_tag = soup.select_one("h1.entry-title")
+    title = title_tag.get_text(strip=True) if title_tag else "No title"
 
-    image = soup.select_one(".news-view-hero img")
-    image_url = BASE_URL + image["src"] if image else None
+    # 📷 Rasm
+    img_tag = soup.select_one("figure.entry-poster img")
+    image_url = None
+    if img_tag and img_tag.get("src"):
+        image_url = "https://chelseablues.ru" + img_tag["src"]
 
-    content_block = soup.select_one(".news-text")
+    # 📄 To‘liq matn
+    content_block = soup.select_one("div.entry-message")
+    if not content_block:
+        return title, "Matn topilmadi", image_url
+
     paragraphs = content_block.find_all("p")
+    text = "\n\n".join(p.get_text(strip=True) for p in paragraphs)
 
-    full_text = "\n\n".join(p.get_text(strip=True) for p in paragraphs)
+    return title, text, image_url
 
-    return title, full_text, image_url
 
 
 def send_photo(caption, photo):
