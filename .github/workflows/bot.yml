@@ -20,7 +20,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4
+          pip install --upgrade pip
+          pip install requests beautifulsoup4 pyTelegramBotAPI
 
       - name: Run bot
         env:
@@ -28,3 +29,4 @@ jobs:
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: |
           python bot.py
+
