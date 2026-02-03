@@ -1,106 +1,98 @@
-import requests
 import os
+import requests
 from bs4 import BeautifulSoup
+import telebot
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
+# ====== CONFIG ======
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
 BASE_URL = "https://chelseablues.ru"
-LAST_FILE = "last_link.txt"
+NEWS_URL = "https://chelseablues.ru/news"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0"
+    "User-Agent": "Mozilla/5.0 (compatible; ChelseaBot/1.0)"
 }
 
-
-def get_last_link():
-    if os.path.exists(LAST_FILE):
-        return open(LAST_FILE).read().strip()
-    return ""
+bot = telebot.TeleBot(BOT_TOKEN)
 
 
-def save_last_link(link):
-    open(LAST_FILE, "w").write(link)
+# ====== TEXT SPLITTER ======
+def split_text(text, limit=900):
+    parts = []
+    while len(text) > limit:
+        split_at = text.rfind("\n", 0, limit)
+        if split_at == -1:
+            split_at = limit
+        parts.append(text[:split_at])
+        text = text[split_at:].lstrip()
+    parts.append(text)
+    return parts
 
 
+# ====== GET LATEST POST LINK ======
 def get_latest_post_link():
-    r = requests.get(BASE_URL, headers=HEADERS, timeout=15)
+    r = requests.get(NEWS_URL, headers=HEADERS, timeout=15)
     soup = BeautifulSoup(r.text, "html.parser")
 
-    first_post = soup.select_one(".news-item-title a")
+    first_post = soup.select_one(".newsline-tab-item-title a")
     if not first_post:
-        return None
+        raise Exception("Yangilik topilmadi")
 
-    return BASE_URL + first_post["href"]
+    return first_post["href"]
 
 
+# ====== PARSE POST DATA ======
 def get_post_data(url):
-    r = requests.get(url, timeout=20)
+    r = requests.get(url, headers=HEADERS, timeout=15)
     soup = BeautifulSoup(r.text, "html.parser")
 
-    # 📰 Sarlavha
-    title_tag = soup.select_one("h1.entry-title")
-    title = title_tag.get_text(strip=True) if title_tag else "No title"
+    # Sarlavha
+    title = soup.select_one("h1.entry-title").get_text(strip=True)
 
-    # 📷 Rasm
-    img_tag = soup.select_one("figure.entry-poster img")
-    image_url = None
-    if img_tag and img_tag.get("src"):
-        image_url = "https://chelseablues.ru" + img_tag["src"]
+    # Rasm
+    img_tag = soup.select_one(".entry-poster img")
+    image_url = BASE_URL + img_tag["src"]
 
-    # 📄 To‘liq matn
-    content_block = soup.select_one("div.entry-message")
-    if not content_block:
-        return title, "Matn topilmadi", image_url
+    # Matn
+    content = soup.select_one(".entry-message")
+    paragraphs = content.find_all("p")
 
-    paragraphs = content_block.find_all("p")
-    text = "\n\n".join(p.get_text(strip=True) for p in paragraphs)
+    text_parts = []
+    for p in paragraphs:
+        txt = p.get_text(strip=True)
+        if txt:
+            text_parts.append(txt)
 
-    return title, text, image_url
+    full_text = "\n\n".join(text_parts)
 
-
-
-def send_photo(caption, photo):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "photo": photo,
-        "caption": caption[:1024]
-    })
+    return title, full_text, image_url
 
 
-def send_message(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": text[:4096]
-    })
-
-
+# ====== MAIN ======
 def main():
     post_link = get_latest_post_link()
-    if not post_link:
-        print("❌ Post topilmadi")
-        return
-
-    if post_link == get_last_link():
-        print("⏭ Yangi post yo‘q")
-        return
-
     title, text, image = get_post_data(post_link)
 
-    caption = f"📰 {title}\n\n{text}\n\n🔗 {post_link}"
+    parts = split_text(text)
 
-    if image:
-        send_photo(caption, image)
-    else:
-        send_message(caption)
+    # 1-xabar
+    caption_1 = f"📰 {title}\n\n{parts[0]}"
+    bot.send_photo(
+        chat_id=CHAT_ID,
+        photo=image,
+        caption=caption_1
+    )
 
-    save_last_link(post_link)
-    print("✅ Yangi post yuborildi")
+    # Davomi bo‘lsa
+    if len(parts) > 1:
+        caption_2 = "🧵 Davomi:\n\n" + "\n\n".join(parts[1:])
+        bot.send_photo(
+            chat_id=CHAT_ID,
+            photo=image,
+            caption=caption_2
+        )
 
 
 if __name__ == "__main__":
     main()
-
-
