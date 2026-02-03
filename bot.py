@@ -24,21 +24,32 @@ def get_post_data(url):
     r = requests.get(url, headers=HEADERS, timeout=20)
     soup = BeautifulSoup(r.text, "html.parser")
 
-    # Title
-    title = soup.find("h1").get_text(strip=True)
+    # TITLE
+    h1 = soup.find("h1")
+    title = h1.get_text(strip=True) if h1 else "No title"
 
-    # Image
+    # IMAGE
     img = soup.find("meta", property="og:image")
     image_url = img["content"] if img else None
 
-    # Content
-    content_block = soup.find("div", class_="news-text") \
-                 or soup.find("div", class_="entry-content")
+    # CONTENT (bir nechta variant)
+    content_block = (
+        soup.find("div", class_="news-text")
+        or soup.find("div", class_="news-item-message")
+        or soup.find("div", class_="entry-content")
+    )
 
-    paragraphs = content_block.find_all("p")
-    text = "\n\n".join(p.get_text(strip=True) for p in paragraphs)
+    if not content_block:
+        text = "Full article available on the website."
+    else:
+        paragraphs = content_block.find_all("p")
+        if paragraphs:
+            text = "\n\n".join(p.get_text(strip=True) for p in paragraphs)
+        else:
+            text = content_block.get_text(strip=True)
 
-    return title, text, image_url
+    return title, text[:900], image_url
+
 
 def send_to_telegram(title, text, image_url, link):
     caption = f"<b>{title}</b>\n\n{text}\n\n<a href='{link}'>Manba</a>"
