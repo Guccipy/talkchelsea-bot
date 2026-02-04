@@ -14,7 +14,7 @@ HEADERS = {
 }
 
 MAX_MESSAGE = 3500
-
+print("=== SPORTS.RU BOT VERSION 2026-02-04 ===")
 
 def get_all_post_links():
     r = requests.get(NEWS_URL, headers=HEADERS, timeout=20)
