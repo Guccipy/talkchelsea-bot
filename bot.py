@@ -38,7 +38,7 @@ def get_post_data(url):
     r = requests.get(url, headers=HEADERS, timeout=20)
     soup = BeautifulSoup(r.text, "html.parser")
 
-    # sarlavha
+    # Sarlavha
     title_tag = soup.select_one("h1")
     if not title_tag:
         print("NO TITLE")
@@ -46,11 +46,32 @@ def get_post_data(url):
 
     title = title_tag.get_text(strip=True)
 
-    # kontent (bir nechta ehtimoliy joy)
-    content = (
-        soup.select_one('div[itemprop="articleBody"]')
-        or soup.select_one(".news-item__content")
-        or soup.select_one(".content")
+    # Kontent bloklari (universal)
+    content = soup.select_one('div[itemprop="articleBody"]')
+    if not content:
+        content = soup.select_one(".news-item__content")
+    if not content:
+        content = soup.select_one(".content")
+
+    if not content:
+        print("NO CONTENT BLOCK")
+        return None, None
+
+    blocks = []
+    for tag in content.find_all(["p", "h2", "h3"]):
+        text = tag.get_text(" ", strip=True)
+        if len(text) < 20:
+            continue
+
+        if tag.name in ["h2", "h3"]:
+            blocks.append(f"\n<b>{text}</b>\n")
+        else:
+            blocks.append(text)
+
+    full_text = "\n\n".join(blocks)
+    print("TEXT LENGTH:", len(full_text))
+
+    return title, full_text
 
 
 
