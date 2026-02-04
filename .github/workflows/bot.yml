@@ -2,7 +2,7 @@ name: TalkChelsea Bot
 
 on:
   schedule:
-    - cron: "*/15 * * * *"   # har 15 daqiqa
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -20,8 +20,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install requests beautifulsoup4 pyTelegramBotAPI
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Run bot
         env:
