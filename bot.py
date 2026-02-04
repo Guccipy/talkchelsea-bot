@@ -1,66 +1,51 @@
 import os
 import requests
+import feedparser
 from bs4 import BeautifulSoup
 from textwrap import wrap
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-BASE_URL = "https://www.sports.ru"
-NEWS_URL = "https://www.sports.ru/football/club/chelsea/materials/"
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0"
-}
+RSS_URL = "https://www.sports.ru/football/club/chelsea/materials/rss/"
+HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 MAX_MESSAGE = 3500
-print("=== SPORTS.RU BOT VERSION 2026-02-04 ===")
 
-def get_all_post_links():
-    r = requests.get(NEWS_URL, headers=HEADERS, timeout=20)
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    links = []
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-
-        if href.startswith("/football/") and href.endswith(".html"):
-            links.append(BASE_URL + href)
-
-    # dublikatlarni olib tashlaymiz
-    links = list(dict.fromkeys(links))
-
-    print("LINKS FOUND:", len(links))
-    return links
+print("=== SPORTS.RU RSS + FULL TEXT BOT ===")
 
 
-def get_post_data(url):
+def get_latest_link():
+    feed = feedparser.parse(RSS_URL)
+
+    if not feed.entries:
+        print("RSS EMPTY")
+        return None
+
+    link = feed.entries[0].link
+    print("RSS LINK:", link)
+    return link
+
+
+def parse_full_article(url):
     r = requests.get(url, headers=HEADERS, timeout=20)
     soup = BeautifulSoup(r.text, "html.parser")
 
-    # Sarlavha
-    title_tag = soup.select_one("h1")
+    article = soup.select_one("article")
+    if not article:
+        print("ARTICLE NOT FOUND")
+        return None, None
+
+    title_tag = article.select_one("h1")
     if not title_tag:
-        print("NO TITLE")
         return None, None
 
     title = title_tag.get_text(strip=True)
 
-    # Kontent bloklari (universal)
-    content = soup.select_one('div[itemprop="articleBody"]')
-    if not content:
-        content = soup.select_one(".news-item__content")
-    if not content:
-        content = soup.select_one(".content")
-
-    if not content:
-        print("NO CONTENT BLOCK")
-        return None, None
-
     blocks = []
-    for tag in content.find_all(["p", "h2", "h3"]):
+    for tag in article.select("p, h2, h3"):
         text = tag.get_text(" ", strip=True)
-        if len(text) < 20:
+        if not text:
             continue
 
         if tag.name in ["h2", "h3"]:
@@ -69,10 +54,7 @@ def get_post_data(url):
             blocks.append(text)
 
     full_text = "\n\n".join(blocks)
-    print("TEXT LENGTH:", len(full_text))
-
     return title, full_text
-
 
 
 def send_message(text):
@@ -87,21 +69,15 @@ def send_message(text):
         },
         timeout=20
     )
-
-    print("TELEGRAM STATUS:", r.status_code)
-    print("TELEGRAM RESPONSE:", r.text)
-
+    print("TG STATUS:", r.status_code)
 
 
 def main():
-    links = get_all_post_links()
-    if not links:
+    link = get_latest_link()
+    if not link:
         return
 
-    # HAR DOIM ENG SO‘NGGI MAQOLA
-    new_link = links[0]
-
-    title, text = get_post_data(new_link)
+    title, text = parse_full_article(link)
     if not title or not text:
         return
 
@@ -116,6 +92,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
