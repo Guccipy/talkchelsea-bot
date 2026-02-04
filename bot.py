@@ -21,16 +21,18 @@ def get_all_post_links():
     soup = BeautifulSoup(r.text, "html.parser")
 
     links = []
-    for a in soup.select("a.material-preview__link"):
-        href = a.get("href")
-        if not href:
-            continue
-        if href.startswith("http"):
-            links.append(href)
-        else:
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+
+        if href.startswith("/football/") and href.endswith(".html"):
             links.append(BASE_URL + href)
 
+    # dublikatlarni olib tashlaymiz
+    links = list(dict.fromkeys(links))
+
+    print("LINKS FOUND:", len(links))
     return links
+
 
 
 def get_post_data(url):
