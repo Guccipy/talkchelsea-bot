@@ -5,38 +5,55 @@ from bs4 import BeautifulSoup
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
+BASE_URL = "https://chelseablues.ru"
+NEWS_URL = "https://chelseablues.ru/news"
+LAST_FILE = "last_link.txt"
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
-BASE_URL = "https://chelseablues.ru"
-
-PHOTO_LIMIT = 900      # caption limiti
-TEXT_LIMIT = 3800      # sendMessage limiti
+PHOTO_LIMIT = 900
+TEXT_LIMIT = 3800
 
 
-# ===== TEXTNI BO‘LISH =====
-def split_text(text, limit):
-    parts = []
-    while len(text) > limit:
-        cut = text.rfind("\n", 0, limit)
-        if cut == -1:
-            cut = limit
-        parts.append(text[:cut])
-        text = text[cut:].strip()
-    parts.append(text)
-    return parts
+# ===== last_link =====
+def get_last_link():
+    if os.path.exists(LAST_FILE):
+        return open(LAST_FILE).read().strip()
+    return ""
 
 
-# ===== POST MA'LUMOTLARI =====
+def save_last_link(link):
+    with open(LAST_FILE, "w") as f:
+        f.write(link)
+
+
+# ===== eng oxirgi yangilik linki =====
+def get_latest_post_link():
+    r = requests.get(NEWS_URL, headers=HEADERS, timeout=20)
+    soup = BeautifulSoup(r.text, "html.parser")
+
+    item = soup.select_one(".newsline-tab-item-title a")
+    if not item:
+        return None
+
+    link = item["href"]
+    if link.startswith("/"):
+        link = BASE_URL + link
+
+    return link
+
+
+# ===== post ichidan data =====
 def get_post_data(url):
     r = requests.get(url, headers=HEADERS, timeout=20)
     soup = BeautifulSoup(r.text, "html.parser")
 
     title = soup.find("h1", class_="entry-title").get_text(strip=True)
 
-    img = soup.find("figure", class_="entry-poster").find("img")
-    image_url = BASE_URL + img["src"]
+    img_tag = soup.select_one("figure.entry-poster img")
+    image = BASE_URL + img_tag["src"]
 
     content = soup.find("div", class_="entry-message")
     blocks = content.find_all(["p", "h3"])
@@ -52,10 +69,23 @@ def get_post_data(url):
                 text_parts.append(txt)
 
     full_text = "\n\n".join(text_parts)
-    return title, full_text, image_url
+    return title, full_text, image
 
 
-# ===== TELEGRAM FUNKSIYALAR =====
+# ===== text bo‘lish =====
+def split_text(text, limit):
+    parts = []
+    while len(text) > limit:
+        cut = text.rfind("\n", 0, limit)
+        if cut == -1:
+            cut = limit
+        parts.append(text[:cut])
+        text = text[cut:].strip()
+    parts.append(text)
+    return parts
+
+
+# ===== telegram =====
 def send_photo(caption, image):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     requests.post(url, data={
@@ -77,28 +107,32 @@ def send_text(text):
 
 # ===== MAIN =====
 def main():
-    # hozircha test URL (keyin avtomatlashtiramiz)
-    post_url = (
-        "https://chelseablues.ru/news/"
-        "ronaldu_buntuet_messi_vozvrashhaetsja_domoj_"
-        "a_manchester_siti_ishhet_zamenu_gvardiole/"
-        "2026-02-03-146405"
-    )
+    latest_link = get_latest_post_link()
+    if not latest_link:
+        print("❌ Yangilik topilmadi")
+        return
 
-    title, text, image = get_post_data(post_url)
+    last_link = get_last_link()
+    if latest_link == last_link:
+        print("⏭ Yangi post yo‘q")
+        return
 
-    # 1-xabar (rasm bilan)
-    first_block = split_text(f"📰 <b>{title}</b>\n\n{text}", PHOTO_LIMIT)
-    send_photo(first_block[0], image)
+    title, text, image = get_post_data(latest_link)
 
-    # qolganlari (faqat matn)
-    if len(first_block) > 1:
-        rest_text = "\n\n".join(first_block[1:])
+    first_parts = split_text(f"📰 <b>{title}</b>\n\n{text}", PHOTO_LIMIT)
+    send_photo(first_parts[0], image)
+
+    if len(first_parts) > 1:
+        rest_text = "\n\n".join(first_parts[1:])
         rest_parts = split_text(rest_text, TEXT_LIMIT)
 
-        for i, part in enumerate(rest_parts):
+        for part in rest_parts:
             send_text(f"⏩ <i>Davomi:</i>\n\n{part}")
+
+    save_last_link(latest_link)
+    print("✅ Yangi post yuborildi")
 
 
 if __name__ == "__main__":
     main()
+
