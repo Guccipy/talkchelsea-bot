@@ -14,7 +14,6 @@ HEADERS = {
 }
 
 MAX_MESSAGE = 3500
-LAST_POST_FILE = "last_post.txt"
 
 
 def get_all_post_links():
@@ -34,18 +33,6 @@ def get_all_post_links():
     return links
 
 
-def get_last_sent():
-    if os.path.exists(LAST_POST_FILE):
-        with open(LAST_POST_FILE, "r") as f:
-            return f.read().strip()
-    return None
-
-
-def save_last_sent(link):
-    with open(LAST_POST_FILE, "w") as f:
-        f.write(link)
-
-
 def get_post_data(url):
     r = requests.get(url, headers=HEADERS, timeout=20)
     soup = BeautifulSoup(r.text, "html.parser")
@@ -55,6 +42,9 @@ def get_post_data(url):
         return None, None
 
     title_tag = article.select_one("h1")
+    if not title_tag:
+        return None, None
+
     title = title_tag.get_text(strip=True)
 
     content_blocks = []
@@ -74,32 +64,31 @@ def get_post_data(url):
 
 def send_message(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
-    })
+    requests.post(
+        url,
+        data={
+            "chat_id": CHAT_ID,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True
+        },
+        timeout=20
+    )
 
 
 def main():
     links = get_all_post_links()
-    last_sent = get_last_sent()
-
-    new_link = None
-    for link in links:
-        if link != last_sent:
-            new_link = link
-            break
-
-    if not new_link:
+    if not links:
         return
+
+    # HAR DOIM ENG SO‘NGGI MAQOLA
+    new_link = links[0]
 
     title, text = get_post_data(new_link)
     if not title or not text:
         return
 
-    header = f"⚽ <b>CHELSEA | Sports.ru</b>\n\n<b>{title}</b>\n"
+    header = f"⚽ <b>CHELSEA | Sports.ru</b>\n\n<b>{title}</b>"
     send_message(header)
 
     parts = wrap(text, MAX_MESSAGE)
@@ -107,11 +96,10 @@ def main():
         prefix = "\n📄 <b>Davomi:</b>\n\n" if i > 0 else "\n\n"
         send_message(prefix + part)
 
-    save_last_sent(new_link)
-
 
 if __name__ == "__main__":
     main()
+
 
 
 
