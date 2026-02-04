@@ -34,34 +34,24 @@ def get_all_post_links():
     return links
 
 
-
 def get_post_data(url):
     r = requests.get(url, headers=HEADERS, timeout=20)
     soup = BeautifulSoup(r.text, "html.parser")
 
-    article = soup.select_one("article")
-    if not article:
-        return None, None
-
-    title_tag = article.select_one("h1")
+    # sarlavha
+    title_tag = soup.select_one("h1")
     if not title_tag:
+        print("NO TITLE")
         return None, None
 
     title = title_tag.get_text(strip=True)
 
-    content_blocks = []
-    for tag in article.select("p, h2, h3"):
-        text = tag.get_text(" ", strip=True)
-        if not text:
-            continue
+    # kontent (bir nechta ehtimoliy joy)
+    content = (
+        soup.select_one('div[itemprop="articleBody"]')
+        or soup.select_one(".news-item__content")
+        or soup.select_one(".content")
 
-        if tag.name in ["h2", "h3"]:
-            content_blocks.append(f"\n<b>{text}</b>\n")
-        else:
-            content_blocks.append(text)
-
-    full_text = "\n\n".join(content_blocks)
-    return title, full_text
 
 
 def send_message(text):
