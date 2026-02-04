@@ -1,114 +1,108 @@
 import os
 import requests
 from bs4 import BeautifulSoup
-import subprocess
+from textwrap import wrap
 
-# ====== ENV ======
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-GH_TOKEN = os.getenv("GH_TOKEN")
 
 BASE_URL = "https://chelseablues.ru"
-NEWS_LIST = "https://chelseablues.ru/news"
-LAST_FILE = "last_link.txt"
+NEWS_URL = "https://chelseablues.ru/news"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
 
-# ====== HELPERS ======
-def read_last():
-    if os.path.exists(LAST_FILE):
-        return open(LAST_FILE, "r", encoding="utf-8").read().strip()
-    return ""
+MAX_CAPTION = 900      # rasm osti limiti (xavfsiz)
+MAX_MESSAGE = 3500     # oddiy xabar limiti
 
-def save_last(link):
-    with open(LAST_FILE, "w", encoding="utf-8") as f:
-        f.write(link)
 
-def auto_commit():
-    subprocess.run(["git", "config", "user.name", "github-actions"], check=True)
-    subprocess.run(["git", "config", "user.email", "actions@github.com"], check=True)
-
-    repo = os.environ.get("GITHUB_REPOSITORY")
-    subprocess.run([
-        "git", "remote", "set-url", "origin",
-        f"https://x-access-token:{GH_TOKEN}@github.com/{repo}.git"
-    ], check=True)
-
-    subprocess.run(["git", "add", LAST_FILE], check=True)
-    subprocess.run(["git", "commit", "-m", "update last_link"], check=True)
-    subprocess.run(["git", "push"], check=True)
-
-# ====== GET LATEST POST ======
-def get_latest_link():
-    r = requests.get(NEWS_LIST, headers=HEADERS, timeout=20)
+def get_latest_post_link():
+    r = requests.get(NEWS_URL, headers=HEADERS, timeout=20)
     soup = BeautifulSoup(r.text, "html.parser")
-    a = soup.select_one(".newsline-tab-item-title a")
-    return BASE_URL + a["href"]
 
-# ====== PARSE POST ======
+    a = soup.select_one(".newsline-tab-item-title a")
+    if not a:
+        return None
+
+    link = a["href"]
+
+    # 🔥 MUHIM FIX
+    if link.startswith("http"):
+        return link
+    else:
+        return BASE_URL + link
+
+
 def get_post_data(url):
     r = requests.get(url, headers=HEADERS, timeout=20)
     soup = BeautifulSoup(r.text, "html.parser")
 
     title = soup.select_one("h1.entry-title").get_text(strip=True)
-    image = soup.select_one("figure.entry-poster img")["src"]
-    if image.startswith("/"):
-        image = BASE_URL + image
 
-    blocks = soup.select(".entry-message p, .entry-message h3")
+    img = soup.select_one(".entry-poster img")
+    image_url = BASE_URL + img["src"] if img and img.get("src", "").startswith("/") else img["src"]
 
+    content = soup.select_one(".entry-message")
     parts = []
-    for b in blocks:
-        text = b.get_text(" ", strip=True)
-        if b.name == "h3":
-            parts.append(f"🟦 <b>{text}</b>")
-        else:
-            parts.append(text)
 
-    return title, "\n\n".join(parts), image
+    for tag in content.find_all(["p", "h3"]):
+        text = tag.get_text(" ", strip=True)
+        if not text:
+            continue
 
-# ====== TELEGRAM ======
-def send_photo(caption, photo):
+        # 🔥 h3 — JIRNIY + smayl
+        if tag.name == "h3":
+            text = f"🙂 <b>{text}</b>"
+
+        parts.append(text)
+
+    full_text = "\n\n".join(parts)
+    return title, full_text, image_url
+
+
+def send_photo_with_text(image, caption):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
-    requests.post(url, data={
+    data = {
         "chat_id": CHAT_ID,
-        "photo": photo,
-        "caption": caption[:1020],
+        "photo": image,
+        "caption": caption,
         "parse_mode": "HTML"
-    })
+    }
+    requests.post(url, data=data)
+
 
 def send_text(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={
+    data = {
         "chat_id": CHAT_ID,
         "text": text,
         "parse_mode": "HTML"
-    })
+    }
+    requests.post(url, data=data)
 
-# ====== MAIN ======
+
 def main():
-    last = read_last()
-    link = get_latest_link()
-
-    if link == last:
-        print("⏭ Eski post, chiqildi")
+    link = get_latest_post_link()
+    if not link:
         return
 
     title, text, image = get_post_data(link)
 
-    chunks = [text[i:i+3500] for i in range(0, len(text), 3500)]
+    # 1️⃣ birinchi bo‘lak — rasm bilan
+    first_part = text[:MAX_CAPTION]
+    rest = text[MAX_CAPTION:]
 
-    send_photo(f"📰 <b>{title}</b>\n\n{chunks[0]}", image)
+    caption = f"<b>{title}</b>\n\n{first_part}"
+    send_photo_with_text(image, caption)
 
-    for part in chunks[1:]:
-        send_text("📄 <b>Davomi:</b>\n\n" + part)
+    # 2️⃣ qolganlari — oddiy text
+    if rest:
+        chunks = wrap(rest, MAX_MESSAGE)
+        for i, chunk in enumerate(chunks):
+            prefix = "📄 <b>Davomi:</b>\n\n" if i == 0 else ""
+            send_text(prefix + chunk)
 
-    save_last(link)
-    auto_commit()
 
 if __name__ == "__main__":
     main()
-
-
