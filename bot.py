@@ -66,7 +66,7 @@ def get_post_data(url):
 
 def send_message(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(
+    r = requests.post(
         url,
         data={
             "chat_id": CHAT_ID,
@@ -76,6 +76,10 @@ def send_message(text):
         },
         timeout=20
     )
+
+    print("TELEGRAM STATUS:", r.status_code)
+    print("TELEGRAM RESPONSE:", r.text)
+
 
 
 def main():
